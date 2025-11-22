@@ -4,6 +4,7 @@ import { createContext, useContext, useState, ReactNode, useCallback } from "rea
 
 export interface Transcription {
   id: string;
+  sessionId?: string; // For matching with API transcriptions
   title: string;
   transcript: string;
   status: "active" | "completed";
@@ -64,10 +65,43 @@ export function TranscriptionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addTranscriptionFromWebhook = useCallback(
-    (data: { transcript: string; timestamp?: Date }) => {
+    (data: { transcript: string; timestamp?: Date; sessionId?: string; id?: string; title?: string }) => {
       setTranscriptions((prev) => {
-        // Check if there's an active transcription
-        const active = prev.find((t) => t.status === "active");
+        // If we have sessionId, try to find existing by sessionId
+        if (data.sessionId) {
+          const existing = prev.find((t) => t.sessionId === data.sessionId);
+          if (existing) {
+            // Update existing transcription
+            return prev.map((t) =>
+              t.sessionId === data.sessionId
+                ? {
+                    ...t,
+                    transcript: data.transcript || t.transcript,
+                    title: data.title || t.title,
+                  }
+                : t
+            );
+          }
+        }
+
+        // If we have id, try to find existing by id
+        if (data.id) {
+          const existing = prev.find((t) => t.id === data.id);
+          if (existing) {
+            return prev.map((t) =>
+              t.id === data.id
+                ? {
+                    ...t,
+                    transcript: data.transcript || t.transcript,
+                    title: data.title || t.title,
+                  }
+                : t
+            );
+          }
+        }
+
+        // Check if there's an active transcription (fallback)
+        const active = prev.find((t) => t.status === "active" && !data.sessionId);
         if (active) {
           // Append to active transcription
           return prev.map((t) =>
@@ -75,18 +109,19 @@ export function TranscriptionProvider({ children }: { children: ReactNode }) {
               ? { ...t, transcript: t.transcript + " " + data.transcript }
               : t
           );
-        } else {
-          // Create new active transcription from webhook
-          const id = `transcription-${Date.now()}`;
-          const newTranscription: Transcription = {
-            id,
-            title: `Transcription ${prev.length + 1}`,
-            transcript: data.transcript,
-            status: "active",
-            startedAt: data.timestamp || new Date(),
-          };
-          return [newTranscription, ...prev];
         }
+
+        // Create new active transcription from webhook
+        const id = data.id || `transcription-${Date.now()}`;
+        const newTranscription: Transcription = {
+          id,
+          sessionId: data.sessionId,
+          title: data.title || `Transcription ${prev.length + 1}`,
+          transcript: data.transcript || "",
+          status: "active",
+          startedAt: data.timestamp || new Date(),
+        };
+        return [newTranscription, ...prev];
       });
     },
     []

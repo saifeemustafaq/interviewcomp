@@ -40,37 +40,50 @@ function TranscriptionsContent() {
         const response = await fetch('/api/transcriptions');
         const data = await response.json();
         
+        // Debug logging (remove in production)
+        if (data.transcriptions && data.transcriptions.length > 0) {
+          console.log('📥 Received transcriptions from API:', data.transcriptions.length);
+        }
+        
         if (data.success && data.transcriptions && Array.isArray(data.transcriptions)) {
           // Process each transcription from API
           data.transcriptions.forEach((apiTranscription: any) => {
-            // Find existing transcription by sessionId (since API uses sessionId)
+            // Find existing transcription by sessionId or id
             const existing = contextTranscriptions.find(
-              (t) => t.id === apiTranscription.id || 
-                     (t as any).sessionId === apiTranscription.sessionId
+              (t) => 
+                (t.sessionId && t.sessionId === apiTranscription.sessionId) ||
+                t.id === apiTranscription.id
             );
 
             if (!existing) {
-              // New transcription - add it
+              // New transcription - add it with all API data
               addTranscriptionFromWebhook({
+                id: apiTranscription.id,
+                sessionId: apiTranscription.sessionId,
                 transcript: apiTranscription.transcript || "",
                 timestamp: new Date(apiTranscription.startedAt),
+                title: apiTranscription.title,
               });
-            } else if (existing.status === 'active' && apiTranscription.status === 'active') {
-              // Update existing active transcription if transcript changed
+            } else {
+              // Update existing transcription
               const currentTranscript = existing.transcript || "";
               const newTranscript = apiTranscription.transcript || "";
               
-              // Only update if the new transcript is longer (has more content)
-              if (newTranscript.length > currentTranscript.length) {
-                // Update the existing transcription
+              // Always update if transcript changed (API has the source of truth)
+              if (newTranscript !== currentTranscript) {
                 addTranscriptionFromWebhook({
+                  id: apiTranscription.id,
+                  sessionId: apiTranscription.sessionId,
                   transcript: newTranscript,
                   timestamp: new Date(apiTranscription.startedAt),
+                  title: apiTranscription.title,
                 });
               }
-            } else if (apiTranscription.status === 'completed' && existing.status === 'active') {
-              // Mark as completed if API says so
-              stopTranscription(existing.id);
+
+              // Update status if changed
+              if (apiTranscription.status === 'completed' && existing.status === 'active') {
+                stopTranscription(existing.id);
+              }
             }
           });
         }
