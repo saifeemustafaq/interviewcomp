@@ -67,19 +67,20 @@ export async function POST(request: NextRequest) {
     // Use user text if available, otherwise use all text
     const transcript = userText || allText;
 
-    // TODO: Integrate with Convex
-    // 1. Validate webhook signature (if OMI provides authentication)
-    // 2. Store/update transcription in Convex database
-    // 3. Use Convex real-time subscriptions to push updates to clients
-    // 
-    // Example Convex integration:
-    // await ctx.runMutation("transcriptions:updateFromWebhook", {
-    //   transcript,
-    //   sessionId: activeSessionId,
-    //   userId: userId,
-    //   segments: segments,
-    //   timestamp: new Date(),
-    // });
+    // Store transcription directly using shared store
+    // This is a temporary solution - in production, use Convex
+    try {
+      const { addOrUpdateTranscription } = await import("../transcriptions/store");
+      addOrUpdateTranscription({
+        sessionId: activeSessionId || `session-${Date.now()}`,
+        transcript,
+        status: "active",
+        title: `OMI Transcription ${activeSessionId || "New"}`,
+      });
+    } catch (storageError) {
+      console.error("Error storing transcription:", storageError);
+      // Continue even if storage fails - webhook should still return 200
+    }
 
     console.log("OMI Webhook received:", {
       sessionId: activeSessionId,

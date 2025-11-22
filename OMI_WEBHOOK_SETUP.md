@@ -6,9 +6,38 @@ This application is configured to receive real-time transcriptions from your OMI
 
 **Based on Official OMI Documentation**: https://docs.omi.me/doc/developer/apps/Integrations
 
+## 🚀 Quick Start (You're Already Deployed!)
+
+**Your Webhook URL:**
+```
+https://intercmp.netlify.app/api/omi/webhook
+```
+
+**To Configure OMI:**
+1. Open OMI app → Settings → Developer Mode → Developer Settings
+2. Find "Real-Time Transcript Webhook" field
+3. Paste: `https://intercmp.netlify.app/api/omi/webhook`
+4. Save and start speaking!
+
+**Your App URL:**
+- View transcriptions: https://intercmp.netlify.app/transcriptions
+- Dashboard: https://intercmp.netlify.app
+
 ## Setup Instructions
 
-### 0. Local Development Setup (If Running Locally)
+### ✅ **You're Already Deployed!**
+
+Your app is deployed at: **https://intercmp.netlify.app**
+
+You can skip the local development setup below and go directly to **Step 1: Configure OMI Device**.
+
+Your webhook URL is: **https://intercmp.netlify.app/api/omi/webhook**
+
+---
+
+### 0. Local Development Setup (Only if Testing Locally)
+
+⚠️ **Note**: Since you're already deployed to Netlify, you only need this section if you want to test changes locally before deploying.
 
 Since OMI needs a publicly accessible HTTPS URL, you'll need to expose your local server. Here are the best options:
 
@@ -103,16 +132,22 @@ Since OMI needs a publicly accessible HTTPS URL, you'll need to expose your loca
 3. Go to **Developer Settings**
 4. Find **"Real-Time Transcript Webhook"** field
 5. Enter your webhook URL:
-   - **For local development**: Use the ngrok/localtunnel URL from above + `/api/omi/webhook`
+
+   **✅ For Netlify Deployment (Your Current Setup):**
+   ```
+   https://intercmp.netlify.app/api/omi/webhook
+   ```
+   This is your permanent webhook URL. It won't change, so you only need to configure it once in OMI.
+
+   **For local development (only if testing locally):**
+   - Use the ngrok/localtunnel URL from Step 0 + `/api/omi/webhook`
      ```
      https://abc123.ngrok-free.app/api/omi/webhook
      ```
-   - **For Netlify (Recommended - Free & Permanent)**: 
-     ```
-     https://your-app-name.netlify.app/api/omi/webhook
-     ```
-     See `NETLIFY_DEPLOYMENT.md` for deployment instructions.
-   - **For production**: Use your deployed domain
+   - ⚠️ Note: ngrok URLs change each time you restart, so you'll need to update OMI settings each time
+
+   **For custom domain (optional):**
+   - If you add a custom domain to Netlify, use that instead
      ```
      https://yourdomain.com/api/omi/webhook
      ```
@@ -173,15 +208,21 @@ Currently, transcriptions are stored in client-side state. For production, you'l
 
 ### 5. Testing
 
-To test the webhook integration:
+#### Test 1: Verify Webhook Endpoint is Live
 
-1. Start your Next.js development server: `npm run dev`
-2. Use a tool like `curl` or Postman to send a POST request matching OMI's format
-3. Check the Transcriptions page to see if the transcription appears
+Visit in your browser:
+```
+https://intercmp.netlify.app/api/omi/webhook
+```
 
-**Example test request (matching OMI format):**
+You should see: `{"message":"OMI Webhook endpoint is active"}`
+
+#### Test 2: Send a Test Webhook Request
+
+Test your deployed webhook with curl:
+
 ```bash
-curl -X POST "http://localhost:3000/api/omi/webhook?session_id=test123&uid=user456" \
+curl -X POST "https://intercmp.netlify.app/api/omi/webhook?session_id=test123&uid=user456" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "test123",
@@ -195,31 +236,38 @@ curl -X POST "http://localhost:3000/api/omi/webhook?session_id=test123&uid=user4
   }'
 ```
 
-**Testing with OMI Device (Local Development):**
+Expected response: `{"success":true,"message":"Transcription received",...}`
+
+#### Test 3: Test with OMI Device
+
+1. **Configure OMI**: 
+   - Open OMI app → Settings → Developer Mode → Developer Settings
+   - Set "Real-Time Transcript Webhook" to: `https://intercmp.netlify.app/api/omi/webhook`
+
+2. **Start Speaking**: 
+   - Turn on your OMI device
+   - Start speaking
+   - OMI will send transcription data to your webhook
+
+3. **Check Results**:
+   - Visit: `https://intercmp.netlify.app/transcriptions`
+   - You should see transcriptions appearing in real-time
+
+4. **Monitor Webhooks**:
+   - Check Netlify Functions logs in your Netlify dashboard
+   - Go to: Site → Functions → View logs
+   - You'll see incoming webhook requests logged there
+
+#### Testing Locally (Optional)
+
+If you want to test changes locally before deploying:
+
 1. Start your Next.js server: `npm run dev`
-2. Start ngrok (or your chosen tunneling tool) pointing to port 3000
-3. Copy the HTTPS URL from ngrok (e.g., `https://abc123.ngrok-free.app`)
-4. Configure the webhook URL in OMI Developer Settings: `https://abc123.ngrok-free.app/api/omi/webhook`
-5. Start speaking to your OMI device
-6. Check your Next.js server logs to see incoming webhook requests
-7. Verify transcriptions appear in the portal at `http://localhost:3000/transcriptions`
-
-**Quick Test Without OMI Device:**
-You can test the webhook locally using curl (replace the ngrok URL with your actual tunnel URL):
-```bash
-curl -X POST "https://YOUR_NGROK_URL.ngrok-free.app/api/omi/webhook?session_id=test123&uid=user456" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "test123",
-    "segments": [
-      {
-        "text": "This is a test transcription from OMI",
-        "speaker": "user",
-        "is_user": true
-      }
-    ]
-  }'
-```
+2. Start ngrok: `ngrok http 3000`
+3. Use the ngrok URL in OMI settings temporarily
+4. Test your changes
+5. Deploy to Netlify when ready
+6. Update OMI settings back to: `https://intercmp.netlify.app/api/omi/webhook`
 
 ### 6. Important Requirements
 

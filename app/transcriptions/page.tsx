@@ -22,12 +22,72 @@ function formatDate(date: Date): string {
 
 function TranscriptionsContent() {
   const {
-    transcriptions,
+    transcriptions: contextTranscriptions,
     activeTranscription,
     stopTranscription,
     deleteTranscription,
+    addTranscriptionFromWebhook,
   } = useTranscriptions();
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isPolling, setIsPolling] = useState(true);
+
+  // Poll for new transcriptions from webhook
+  useEffect(() => {
+    if (!isPolling) return;
+
+    const fetchTranscriptions = async () => {
+      try {
+        const response = await fetch('/api/transcriptions');
+        const data = await response.json();
+        
+        if (data.success && data.transcriptions && Array.isArray(data.transcriptions)) {
+          // Process each transcription from API
+          data.transcriptions.forEach((apiTranscription: any) => {
+            // Find existing transcription by sessionId (since API uses sessionId)
+            const existing = contextTranscriptions.find(
+              (t) => t.id === apiTranscription.id || 
+                     (t as any).sessionId === apiTranscription.sessionId
+            );
+
+            if (!existing) {
+              // New transcription - add it
+              addTranscriptionFromWebhook({
+                transcript: apiTranscription.transcript || "",
+                timestamp: new Date(apiTranscription.startedAt),
+              });
+            } else if (existing.status === 'active' && apiTranscription.status === 'active') {
+              // Update existing active transcription if transcript changed
+              const currentTranscript = existing.transcript || "";
+              const newTranscript = apiTranscription.transcript || "";
+              
+              // Only update if the new transcript is longer (has more content)
+              if (newTranscript.length > currentTranscript.length) {
+                // Update the existing transcription
+                addTranscriptionFromWebhook({
+                  transcript: newTranscript,
+                  timestamp: new Date(apiTranscription.startedAt),
+                });
+              }
+            } else if (apiTranscription.status === 'completed' && existing.status === 'active') {
+              // Mark as completed if API says so
+              stopTranscription(existing.id);
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching transcriptions:', error);
+      }
+    };
+
+    // Poll every 2 seconds for real-time updates
+    const interval = setInterval(fetchTranscriptions, 2000);
+    fetchTranscriptions(); // Initial fetch
+
+    return () => clearInterval(interval);
+  }, [isPolling, contextTranscriptions, addTranscriptionFromWebhook, stopTranscription]);
+
+  // Use context transcriptions
+  const transcriptions = contextTranscriptions;
 
   // Update elapsed time for active transcription
   useEffect(() => {
