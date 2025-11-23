@@ -19,7 +19,13 @@ interface TranscriptionContextType {
   startTranscription: (title?: string) => string;
   stopTranscription: (id: string) => void;
   updateTranscription: (id: string, transcript: string) => void;
-  addTranscriptionFromWebhook: (data: { transcript: string; timestamp?: Date }) => void;
+  addTranscriptionFromWebhook: (data: { 
+    transcript: string; 
+    timestamp?: Date;
+    sessionId?: string;
+    id?: string;
+    title?: string;
+  }) => void;
   deleteTranscription: (id: string) => void;
 }
 

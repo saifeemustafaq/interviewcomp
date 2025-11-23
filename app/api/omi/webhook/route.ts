@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     // Store transcription directly using shared store
     // This is a temporary solution - in production, use Convex
     try {
-      const { addOrUpdateTranscription } = await import("../transcriptions/store");
+      const { addOrUpdateTranscription } = await import("../../transcriptions/store");
       addOrUpdateTranscription({
         sessionId: activeSessionId || `session-${Date.now()}`,
         transcript,
