@@ -70,7 +70,8 @@ function TranscriptionsContent() {
               const newTranscript = apiTranscription.transcript || "";
               
               // Always update if transcript changed (API has the source of truth)
-              if (newTranscript !== currentTranscript) {
+              // But only if the transcription is still active
+              if (newTranscript !== currentTranscript && existing.status === 'active' && apiTranscription.status === 'active') {
                 addTranscriptionFromWebhook({
                   id: apiTranscription.id,
                   sessionId: apiTranscription.sessionId,
@@ -80,7 +81,7 @@ function TranscriptionsContent() {
                 });
               }
 
-              // Update status if changed
+              // Update status if changed - mark as completed if API says so
               if (apiTranscription.status === 'completed' && existing.status === 'active') {
                 stopTranscription(existing.id);
               }
@@ -119,9 +120,29 @@ function TranscriptionsContent() {
     return () => clearInterval(interval);
   }, [activeTranscription]);
 
-  const handleStop = () => {
+  const handleStop = async () => {
     if (activeTranscription) {
+      // Update frontend state immediately
       stopTranscription(activeTranscription.id);
+      
+      // Also update the API/store to persist the stop action
+      try {
+        const identifier = activeTranscription.sessionId || activeTranscription.id;
+        await fetch('/api/transcriptions', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId: activeTranscription.sessionId,
+            id: activeTranscription.id,
+          }),
+        });
+        console.log('✅ Transcription stopped and saved');
+      } catch (error) {
+        console.error('Error stopping transcription:', error);
+        // Frontend state is already updated, so continue
+      }
     }
   };
 

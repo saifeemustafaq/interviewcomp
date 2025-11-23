@@ -34,6 +34,12 @@ export function addOrUpdateTranscription(data: {
   if (existingIndex >= 0) {
     // Update existing
     const existing = transcriptionsStore[existingIndex];
+    
+    // Don't update if already completed (unless explicitly setting status)
+    if (existing.status === "completed" && !data.status) {
+      return existing; // Return existing without updating
+    }
+    
     transcriptionsStore[existingIndex] = {
       ...existing,
       transcript: existing.transcript
@@ -58,6 +64,27 @@ export function addOrUpdateTranscription(data: {
     transcriptionsStore.push(newTranscription);
     return newTranscription;
   }
+}
+
+export function completeTranscription(sessionIdOrId: string): StoredTranscription | null {
+  const transcription = transcriptionsStore.find(
+    (t) => t.sessionId === sessionIdOrId || t.id === sessionIdOrId
+  );
+  
+  if (transcription && transcription.status === "active") {
+    const index = transcriptionsStore.findIndex(
+      (t) => t.sessionId === sessionIdOrId || t.id === sessionIdOrId
+    );
+    const now = new Date().toISOString();
+    transcriptionsStore[index] = {
+      ...transcription,
+      status: "completed",
+      completedAt: now,
+      lastUpdated: now,
+    };
+    return transcriptionsStore[index];
+  }
+  return null;
 }
 
 export function deleteTranscription(id: string): boolean {
