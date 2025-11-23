@@ -6,7 +6,7 @@ const http = httpRouter();
 
 // HTTP Action for OMI webhook
 http.route({
-  path: "omiWebhook",
+  path: "/omiWebhook",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {

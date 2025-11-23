@@ -74,8 +74,8 @@ export async function POST(request: NextRequest) {
       const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
       if (convexUrl) {
         // Forward to Convex HTTP action
-        const convexSiteUrl = convexUrl.replace('.cloud', '.site');
-        const webhookUrl = `${convexSiteUrl}/api/http/omiWebhook?session_id=${encodeURIComponent(activeSessionId || '')}&uid=${encodeURIComponent(userId || '')}`;
+        // HTTP routes are accessible at /api/http/{path} on the .cloud domain
+        const webhookUrl = `${convexUrl}/api/http/omiWebhook?session_id=${encodeURIComponent(activeSessionId || '')}&uid=${encodeURIComponent(userId || '')}`;
         
         const response = await fetch(webhookUrl, {
           method: 'POST',
