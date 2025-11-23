@@ -68,12 +68,16 @@ export async function POST(request: NextRequest) {
     const transcript = userText || allText;
 
     // Store transcription in Convex (if available) or fallback to in-memory store
+    let storedInConvex = false;
     try {
       // Try Convex first (if environment variable is set)
-      if (process.env.NEXT_PUBLIC_CONVEX_URL) {
+      const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+      if (convexUrl) {
         // Forward to Convex HTTP action
-        const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL.replace('.cloud', '.site');
-        await fetch(`${convexUrl}/api/http/omiWebhook?session_id=${encodeURIComponent(activeSessionId || '')}&uid=${encodeURIComponent(userId || '')}`, {
+        const convexSiteUrl = convexUrl.replace('.cloud', '.site');
+        const webhookUrl = `${convexSiteUrl}/api/http/omiWebhook?session_id=${encodeURIComponent(activeSessionId || '')}&uid=${encodeURIComponent(userId || '')}`;
+        
+        const response = await fetch(webhookUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -83,8 +87,22 @@ export async function POST(request: NextRequest) {
             segments: segments,
           }),
         });
-      } else {
-        // Fallback to in-memory store
+        
+        if (response.ok) {
+          storedInConvex = true;
+          console.log("✅ Successfully stored in Convex");
+        } else {
+          const errorText = await response.text();
+          console.error(`Convex webhook returned ${response.status}:`, errorText);
+        }
+      }
+    } catch (convexError) {
+      console.error("Error calling Convex webhook:", convexError);
+    }
+    
+    // Fallback to in-memory store if Convex not available or failed
+    if (!storedInConvex) {
+      try {
         const { addOrUpdateTranscription } = await import("../../transcriptions/store");
         addOrUpdateTranscription({
           sessionId: activeSessionId || `session-${Date.now()}`,
@@ -92,10 +110,10 @@ export async function POST(request: NextRequest) {
           status: "active",
           title: `OMI Transcription ${activeSessionId || "New"}`,
         });
+        console.log("📦 Stored in fallback in-memory store");
+      } catch (fallbackError) {
+        console.error("Error storing in fallback:", fallbackError);
       }
-    } catch (storageError) {
-      console.error("Error storing transcription:", storageError);
-      // Continue even if storage fails - webhook should still return 200
     }
 
     console.log("OMI Webhook received:", {

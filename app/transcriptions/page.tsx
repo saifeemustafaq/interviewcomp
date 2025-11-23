@@ -24,13 +24,27 @@ function formatDate(timestamp: number): string {
 
 function TranscriptionsContent() {
   // Real-time subscription to all transcriptions
-  const transcriptions = useQuery(api.transcriptions.list) || [];
+  const transcriptions = useQuery(api.transcriptions.list);
   const completeTranscription = useMutation(api.transcriptions.complete);
   const deleteTranscription = useMutation(api.transcriptions.remove);
+  
+  // Handle loading and error states
+  if (transcriptions === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg text-[#7a6f5c] mb-2">Loading transcriptions...</p>
+          <p className="text-sm text-[#a89d87]">Connecting to Convex...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  const transcriptionsList = transcriptions || [];
 
   // Find active transcription
-  const activeTranscription = transcriptions.find((t) => t.status === "active");
-  const completedTranscriptions = transcriptions.filter((t) => t.status === "completed");
+  const activeTranscription = transcriptionsList.find((t) => t.status === "active");
+  const completedTranscriptions = transcriptionsList.filter((t) => t.status === "completed");
 
   const [elapsedTime, setElapsedTime] = useState(0);
 
@@ -86,7 +100,7 @@ function TranscriptionsContent() {
 
       {/* Main Content */}
       <div className="p-8">
-        {transcriptions.length === 0 ? (
+        {transcriptionsList.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <p className="text-lg text-[#7a6f5c] mb-4">No transcriptions yet</p>
             <p className="text-sm text-[#a89d87] text-center max-w-md">
@@ -97,7 +111,7 @@ function TranscriptionsContent() {
         ) : (
           <div className="space-y-4">
             {/* Active Transcription Card */}
-            {activeTranscription && (
+            {activeTranscription && activeTranscription.status === 'active' && (
               <div className="rounded-lg border-2 border-[#c9bfab] bg-[#faf9f5] p-6 shadow-lg relative overflow-hidden">
                 {/* Glowing indicator with animation */}
                 <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
