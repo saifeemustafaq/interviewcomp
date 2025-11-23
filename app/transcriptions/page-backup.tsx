@@ -23,19 +23,59 @@ function formatDate(timestamp: number): string {
 }
 
 function TranscriptionsContent() {
-  // Always call hooks unconditionally - this is required by React
-  // Convex hooks will return undefined if not connected, which is fine
+  // Real-time subscription to all transcriptions
+  // Hooks must be called unconditionally
   const transcriptions = useQuery(api.transcriptions.list);
   const completeTranscription = useMutation(api.transcriptions.complete);
   const deleteTranscription = useMutation(api.transcriptions.remove);
+  
+  // Check if Convex URL is configured
+  const convexUrl = typeof window !== 'undefined' 
+    ? (window as any).__NEXT_DATA__?.env?.NEXT_PUBLIC_CONVEX_URL 
+    : process.env.NEXT_PUBLIC_CONVEX_URL;
+  
+  // Handle loading state
+  if (transcriptions === undefined) {
+    return (
+      <div className="min-h-screen">
+        <header className="border-b border-[#e0d9cc] bg-[#faf9f5]">
+          <div className="px-8 py-4">
+            <h2 className="text-2xl font-semibold text-[#2c2416]">Transcriptions</h2>
+          </div>
+        </header>
+        <div className="p-8 flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            {!convexUrl ? (
+              <>
+                <p className="text-lg text-[#7a6f5c] mb-2">Convex not configured</p>
+                <p className="text-sm text-[#a89d87] mb-4">
+                  Please add <code className="bg-[#ede9e0] px-2 py-1 rounded text-xs">NEXT_PUBLIC_CONVEX_URL</code> to Netlify environment variables.
+                </p>
+                <p className="text-xs text-[#a89d87]">
+                  Value: <code className="bg-[#ede9e0] px-2 py-1 rounded">https://shiny-spoonbill-523.convex.cloud</code>
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg text-[#7a6f5c] mb-2">Loading transcriptions...</p>
+                <p className="text-sm text-[#a89d87]">Connecting to Convex...</p>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  const transcriptionsList = transcriptions || [];
+
+  // Find active transcription
+  const activeTranscription = transcriptionsList.find((t) => t.status === "active");
+  const completedTranscriptions = transcriptionsList.filter((t) => t.status === "completed");
+
   const [elapsedTime, setElapsedTime] = useState(0);
 
-  // Find active transcription (even if transcriptions is undefined)
-  const transcriptionsList = transcriptions || [];
-  const activeTranscription = transcriptionsList.find((t) => t.status === "active");
-
   // Update elapsed time for active transcription
-  // This hook must be called unconditionally, even if activeTranscription is undefined
   useEffect(() => {
     if (!activeTranscription) {
       setElapsedTime(0);
@@ -50,34 +90,8 @@ function TranscriptionsContent() {
     return () => clearInterval(interval);
   }, [activeTranscription]);
 
-  // Handle loading/error state
-  if (transcriptions === undefined) {
-    return (
-      <div className="min-h-screen">
-        <header className="border-b border-[#e0d9cc] bg-[#faf9f5]">
-          <div className="px-8 py-4">
-            <h2 className="text-2xl font-semibold text-[#2c2416]">Transcriptions</h2>
-          </div>
-        </header>
-        <div className="p-8 flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <p className="text-lg text-[#7a6f5c] mb-2">Loading transcriptions...</p>
-            <p className="text-sm text-[#a89d87]">
-              {process.env.NEXT_PUBLIC_CONVEX_URL 
-                ? "Connecting to Convex..." 
-                : "Convex not configured. Add NEXT_PUBLIC_CONVEX_URL to Netlify environment variables."}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
-  // Find completed transcriptions
-  const completedTranscriptions = transcriptionsList.filter((t) => t.status === "completed");
-
   const handleStop = async () => {
-    if (activeTranscription && completeTranscription) {
+    if (activeTranscription) {
       try {
         await completeTranscription({ sessionId: activeTranscription.sessionId });
         console.log("✅ Transcription stopped and saved");
@@ -88,7 +102,7 @@ function TranscriptionsContent() {
   };
 
   const handleDelete = async (id: Id<"transcriptions">) => {
-    if (deleteTranscription && confirm("Are you sure you want to delete this transcription?")) {
+    if (confirm("Are you sure you want to delete this transcription?")) {
       try {
         await deleteTranscription({ id });
       } catch (error) {
@@ -124,7 +138,7 @@ function TranscriptionsContent() {
         ) : (
           <div className="space-y-4">
             {/* Active Transcription Card */}
-            {activeTranscription && (
+            {activeTranscription && activeTranscription.status === 'active' && (
               <div className="rounded-lg border-2 border-[#c9bfab] bg-[#faf9f5] p-6 shadow-lg relative overflow-hidden">
                 {/* Glowing indicator with animation */}
                 <div className="absolute top-4 right-4 flex items-center gap-2 z-10">

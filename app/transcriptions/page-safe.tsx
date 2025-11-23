@@ -28,27 +28,8 @@ function TranscriptionsContent() {
   const transcriptions = useQuery(api.transcriptions.list);
   const completeTranscription = useMutation(api.transcriptions.complete);
   const deleteTranscription = useMutation(api.transcriptions.remove);
+  
   const [elapsedTime, setElapsedTime] = useState(0);
-
-  // Find active transcription (even if transcriptions is undefined)
-  const transcriptionsList = transcriptions || [];
-  const activeTranscription = transcriptionsList.find((t) => t.status === "active");
-
-  // Update elapsed time for active transcription
-  // This hook must be called unconditionally, even if activeTranscription is undefined
-  useEffect(() => {
-    if (!activeTranscription) {
-      setElapsedTime(0);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - activeTranscription.startedAt) / 1000);
-      setElapsedTime(elapsed);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [activeTranscription]);
 
   // Handle loading/error state
   if (transcriptions === undefined) {
@@ -73,8 +54,26 @@ function TranscriptionsContent() {
     );
   }
   
-  // Find completed transcriptions
+  const transcriptionsList = transcriptions || [];
+
+  // Find active transcription
+  const activeTranscription = transcriptionsList.find((t) => t.status === "active");
   const completedTranscriptions = transcriptionsList.filter((t) => t.status === "completed");
+
+  // Update elapsed time for active transcription
+  useEffect(() => {
+    if (!activeTranscription) {
+      setElapsedTime(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - activeTranscription.startedAt) / 1000);
+      setElapsedTime(elapsed);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [activeTranscription]);
 
   const handleStop = async () => {
     if (activeTranscription && completeTranscription) {
