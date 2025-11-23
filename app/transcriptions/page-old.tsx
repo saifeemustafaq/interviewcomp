@@ -1,11 +1,9 @@
 "use client";
 
 import DashboardLayout from "../components/DashboardLayout";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useTranscriptions } from "../components/TranscriptionContext";
 import { Square, Trash2, Clock } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Id } from "../../convex/_generated/dataModel";
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -13,26 +11,97 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function formatDate(timestamp: number): string {
+function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(timestamp));
+  }).format(date);
 }
 
 function TranscriptionsContent() {
-  // Real-time subscription to all transcriptions
-  const transcriptions = useQuery(api.transcriptions.list) || [];
-  const completeTranscription = useMutation(api.transcriptions.complete);
-  const deleteTranscription = useMutation(api.transcriptions.remove);
-
-  // Find active transcription
-  const activeTranscription = transcriptions.find((t) => t.status === "active");
-  const completedTranscriptions = transcriptions.filter((t) => t.status === "completed");
-
+  const {
+    transcriptions: contextTranscriptions,
+    activeTranscription,
+    stopTranscription,
+    deleteTranscription,
+    addTranscriptionFromWebhook,
+  } = useTranscriptions();
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isPolling, setIsPolling] = useState(true);
+
+  // Poll for new transcriptions from webhook
+  useEffect(() => {
+    if (!isPolling) return;
+
+    const fetchTranscriptions = async () => {
+      try {
+        const response = await fetch('/api/transcriptions');
+        const data = await response.json();
+        
+        // Debug logging (remove in production)
+        if (data.transcriptions && data.transcriptions.length > 0) {
+          console.log('📥 Received transcriptions from API:', data.transcriptions.length);
+        }
+        
+        if (data.success && data.transcriptions && Array.isArray(data.transcriptions)) {
+          // Process each transcription from API
+          data.transcriptions.forEach((apiTranscription: any) => {
+            // Find existing transcription by sessionId or id
+            const existing = contextTranscriptions.find(
+              (t) => 
+                (t.sessionId && t.sessionId === apiTranscription.sessionId) ||
+                t.id === apiTranscription.id
+            );
+
+            if (!existing) {
+              // New transcription - add it with all API data
+              addTranscriptionFromWebhook({
+                id: apiTranscription.id,
+                sessionId: apiTranscription.sessionId,
+                transcript: apiTranscription.transcript || "",
+                timestamp: new Date(apiTranscription.startedAt),
+                title: apiTranscription.title,
+              });
+            } else {
+              // Update existing transcription
+              const currentTranscript = existing.transcript || "";
+              const newTranscript = apiTranscription.transcript || "";
+              
+              // Always update if transcript changed (API has the source of truth)
+              // But only if the transcription is still active
+              if (newTranscript !== currentTranscript && existing.status === 'active' && apiTranscription.status === 'active') {
+                addTranscriptionFromWebhook({
+                  id: apiTranscription.id,
+                  sessionId: apiTranscription.sessionId,
+                  transcript: newTranscript,
+                  timestamp: new Date(apiTranscription.startedAt),
+                  title: apiTranscription.title,
+                });
+              }
+
+              // Update status if changed - mark as completed if API says so
+              if (apiTranscription.status === 'completed' && existing.status === 'active') {
+                stopTranscription(existing.id);
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching transcriptions:', error);
+      }
+    };
+
+    // Poll every 2 seconds for real-time updates
+    const interval = setInterval(fetchTranscriptions, 2000);
+    fetchTranscriptions(); // Initial fetch
+
+    return () => clearInterval(interval);
+  }, [isPolling, contextTranscriptions, addTranscriptionFromWebhook, stopTranscription]);
+
+  // Use context transcriptions
+  const transcriptions = contextTranscriptions;
 
   // Update elapsed time for active transcription
   useEffect(() => {
@@ -42,7 +111,9 @@ function TranscriptionsContent() {
     }
 
     const interval = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - activeTranscription.startedAt) / 1000);
+      const elapsed = Math.floor(
+        (new Date().getTime() - activeTranscription.startedAt.getTime()) / 1000
+      );
       setElapsedTime(elapsed);
     }, 1000);
 
@@ -51,21 +122,26 @@ function TranscriptionsContent() {
 
   const handleStop = async () => {
     if (activeTranscription) {
+      // Update frontend state immediately
+      stopTranscription(activeTranscription.id);
+      
+      // Also update the API/store to persist the stop action
       try {
-        await completeTranscription({ sessionId: activeTranscription.sessionId });
-        console.log("✅ Transcription stopped and saved");
+        const identifier = activeTranscription.sessionId || activeTranscription.id;
+        await fetch('/api/transcriptions', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId: activeTranscription.sessionId,
+            id: activeTranscription.id,
+          }),
+        });
+        console.log('✅ Transcription stopped and saved');
       } catch (error) {
-        console.error("Error stopping transcription:", error);
-      }
-    }
-  };
-
-  const handleDelete = async (id: Id<"transcriptions">) => {
-    if (confirm("Are you sure you want to delete this transcription?")) {
-      try {
-        await deleteTranscription({ id });
-      } catch (error) {
-        console.error("Error deleting transcription:", error);
+        console.error('Error stopping transcription:', error);
+        // Frontend state is already updated, so continue
       }
     }
   };
@@ -78,7 +154,9 @@ function TranscriptionsContent() {
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-semibold text-[#2c2416]">Transcriptions</h2>
             <div className="text-sm text-[#7a6f5c]">
-              Powered by Convex • Real-time updates
+              Webhook URL: <code className="bg-[#ede9e0] px-2 py-1 rounded text-xs">
+                /api/omi/webhook
+              </code>
             </div>
           </div>
         </div>
@@ -91,7 +169,7 @@ function TranscriptionsContent() {
             <p className="text-lg text-[#7a6f5c] mb-4">No transcriptions yet</p>
             <p className="text-sm text-[#a89d87] text-center max-w-md">
               When you turn on your OMI device, transcriptions will automatically appear here.
-              All transcriptions are saved permanently.
+              Make sure your webhook URL is configured in OMI settings.
             </p>
           </div>
         ) : (
@@ -146,14 +224,11 @@ function TranscriptionsContent() {
             )}
 
             {/* Completed Transcriptions */}
-            {completedTranscriptions.map((transcription) => {
-              const duration = transcription.completedAt && transcription.startedAt
-                ? Math.floor((transcription.completedAt - transcription.startedAt) / 1000)
-                : 0;
-
-              return (
+            {transcriptions
+              .filter((t) => t.status === "completed")
+              .map((transcription) => (
                 <div
-                  key={transcription._id}
+                  key={transcription.id}
                   className="rounded-lg border border-[#e0d9cc] bg-[#faf9f5] p-6 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start justify-between mb-4">
@@ -162,10 +237,10 @@ function TranscriptionsContent() {
                         {transcription.title}
                       </h3>
                       <div className="flex items-center gap-4 text-sm text-[#7a6f5c]">
-                        {duration > 0 && (
+                        {transcription.duration && (
                           <span className="flex items-center gap-1">
                             <Clock className="h-4 w-4" />
-                            {formatDuration(duration)}
+                            {formatDuration(transcription.duration)}
                           </span>
                         )}
                         {transcription.completedAt && (
@@ -176,7 +251,7 @@ function TranscriptionsContent() {
                       </div>
                     </div>
                     <button
-                      onClick={() => handleDelete(transcription._id)}
+                      onClick={() => deleteTranscription(transcription.id)}
                       className="ml-4 rounded-md border border-[#c9bfab] bg-white px-3 py-2 text-[#2c2416] hover:bg-[#f5f3ed] transition-colors"
                       title="Delete transcription"
                     >
@@ -194,8 +269,7 @@ function TranscriptionsContent() {
                     )}
                   </div>
                 </div>
-              );
-            })}
+              ))}
           </div>
         )}
       </div>

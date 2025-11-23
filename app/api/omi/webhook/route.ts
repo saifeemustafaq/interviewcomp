@@ -67,16 +67,32 @@ export async function POST(request: NextRequest) {
     // Use user text if available, otherwise use all text
     const transcript = userText || allText;
 
-    // Store transcription directly using shared store
-    // This is a temporary solution - in production, use Convex
+    // Store transcription in Convex (if available) or fallback to in-memory store
     try {
-      const { addOrUpdateTranscription } = await import("../../transcriptions/store");
-      addOrUpdateTranscription({
-        sessionId: activeSessionId || `session-${Date.now()}`,
-        transcript,
-        status: "active",
-        title: `OMI Transcription ${activeSessionId || "New"}`,
-      });
+      // Try Convex first (if environment variable is set)
+      if (process.env.NEXT_PUBLIC_CONVEX_URL) {
+        // Forward to Convex HTTP action
+        const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL.replace('.cloud', '.site');
+        await fetch(`${convexUrl}/api/http/omiWebhook?session_id=${encodeURIComponent(activeSessionId || '')}&uid=${encodeURIComponent(userId || '')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session_id: activeSessionId,
+            segments: segments,
+          }),
+        });
+      } else {
+        // Fallback to in-memory store
+        const { addOrUpdateTranscription } = await import("../../transcriptions/store");
+        addOrUpdateTranscription({
+          sessionId: activeSessionId || `session-${Date.now()}`,
+          transcript,
+          status: "active",
+          title: `OMI Transcription ${activeSessionId || "New"}`,
+        });
+      }
     } catch (storageError) {
       console.error("Error storing transcription:", storageError);
       // Continue even if storage fails - webhook should still return 200
